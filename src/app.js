@@ -13,22 +13,45 @@ const upload = multer({
   limits: { fileSize: 10 * 1024 * 1024 },
 });
 
-const requiredEnvVars = ['SMTP_HOST', 'SMTP_PORT', 'SMTP_USER', 'SMTP_PASS', 'CAREERS_RECEIVER_EMAIL'];
+const careersRequiredEnvVars = ['SMTP_HOST', 'SMTP_PORT', 'SMTP_USER', 'SMTP_PASS', 'CAREERS_RECEIVER_EMAIL'];
+const brochureRequiredEnvVars = ['BROCHURE_SMTP_USER', 'BROCHURE_SMTP_PASS', 'BROCHURE_RECEIVER_EMAIL'];
 
-function getMissingEnvVars() {
-  return requiredEnvVars.filter((key) => !process.env[key]);
+function getMissingEnvVars(keys) {
+  return keys.filter((key) => !process.env[key]);
 }
 
-function createTransporter() {
+function createTransporter(config) {
   return nodemailer.createTransport({
-    host: process.env.SMTP_HOST,
-    port: Number(process.env.SMTP_PORT || 465),
-    secure: String(process.env.SMTP_SECURE || 'true').toLowerCase() === 'true',
+    host: config.host,
+    port: Number(config.port || 465),
+    secure: String(config.secure || 'true').toLowerCase() === 'true',
     auth: {
-      user: process.env.SMTP_USER,
-      pass: process.env.SMTP_PASS,
+      user: config.user,
+      pass: config.pass,
     },
   });
+}
+
+function getCareersMailConfig() {
+  return {
+    host: process.env.SMTP_HOST,
+    port: process.env.SMTP_PORT || 465,
+    secure: process.env.SMTP_SECURE || 'true',
+    user: process.env.SMTP_USER,
+    pass: process.env.SMTP_PASS,
+    receiver: process.env.CAREERS_RECEIVER_EMAIL,
+  };
+}
+
+function getBrochureMailConfig() {
+  return {
+    host: process.env.BROCHURE_SMTP_HOST || process.env.SMTP_HOST,
+    port: process.env.BROCHURE_SMTP_PORT || process.env.SMTP_PORT || 465,
+    secure: process.env.BROCHURE_SMTP_SECURE || process.env.SMTP_SECURE || 'true',
+    user: process.env.BROCHURE_SMTP_USER,
+    pass: process.env.BROCHURE_SMTP_PASS,
+    receiver: process.env.BROCHURE_RECEIVER_EMAIL,
+  };
 }
 
 function getAllowedOrigins() {
@@ -70,7 +93,7 @@ app.get('/api/health', (_req, res) => {
 });
 
 app.post('/api/careers/apply', upload.single('resume'), async (req, res) => {
-  const missingEnvVars = getMissingEnvVars();
+  const missingEnvVars = getMissingEnvVars(careersRequiredEnvVars);
   if (missingEnvVars.length > 0) {
     return res.status(500).json({
       message: `Missing backend email configuration: ${missingEnvVars.join(', ')}`,
@@ -84,11 +107,12 @@ app.post('/api/careers/apply', upload.single('resume'), async (req, res) => {
   }
 
   try {
-    const transporter = createTransporter();
+    const mailConfig = getCareersMailConfig();
+    const transporter = createTransporter(mailConfig);
 
     await transporter.sendMail({
-      from: `Naxatra Careers <${process.env.SMTP_USER}>`,
-      to: process.env.CAREERS_RECEIVER_EMAIL,
+      from: `Naxatra Careers <${mailConfig.user}>`,
+      to: mailConfig.receiver,
       replyTo: email,
       subject: `New career application: ${role}`,
       text: [
@@ -123,6 +147,55 @@ app.post('/api/careers/apply', upload.single('resume'), async (req, res) => {
   } catch (error) {
     console.error('Failed to send careers email:', error);
     return res.status(500).json({ message: 'Failed to send application email.' });
+  }
+});
+
+app.post('/api/brochure/request', async (req, res) => {
+  const missingEnvVars = getMissingEnvVars(brochureRequiredEnvVars);
+  if (missingEnvVars.length > 0) {
+    return res.status(500).json({
+      message: `Missing brochure email configuration: ${missingEnvVars.join(', ')}`,
+    });
+  }
+
+  const { firstName, lastName, companyName, email } = req.body;
+
+  if (!firstName || !lastName || !companyName || !email) {
+    return res.status(400).json({ message: 'Please provide all required fields.' });
+  }
+
+  try {
+    const mailConfig = getBrochureMailConfig();
+    const transporter = createTransporter(mailConfig);
+
+    await transporter.sendMail({
+      from: `Naxatra Brochure <${mailConfig.user}>`,
+      to: mailConfig.receiver,
+      replyTo: email,
+      subject: 'New brochure request',
+      text: [
+        'A new brochure request has been submitted.',
+        '',
+        `First Name: ${firstName}`,
+        `Last Name: ${lastName}`,
+        `Company Name: ${companyName}`,
+        `Email: ${email}`,
+      ].join('\n'),
+      html: `
+        <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #111;">
+          <h2 style="margin-bottom: 16px;">New brochure request received</h2>
+          <p><strong>First Name:</strong> ${firstName}</p>
+          <p><strong>Last Name:</strong> ${lastName}</p>
+          <p><strong>Company Name:</strong> ${companyName}</p>
+          <p><strong>Email:</strong> ${email}</p>
+        </div>
+      `,
+    });
+
+    return res.status(200).json({ message: 'Brochure request submitted successfully.' });
+  } catch (error) {
+    console.error('Failed to send brochure email:', error);
+    return res.status(500).json({ message: 'Failed to send brochure email.' });
   }
 });
 
