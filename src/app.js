@@ -144,6 +144,38 @@ function buildBrochureTeamEmailTemplate({ firstName, lastName, companyName, emai
   `);
 }
 
+function buildSpecSheetUserEmailTemplate({ firstName, productInterestedIn }) {
+  return renderEmailLayout(`
+    <h1 style="margin: 0 0 28px; font-family: Arial, sans-serif; font-size: 24px; line-height: 1.28; font-weight: 400; color: ${EMAIL_HEADING_COLOR};">
+      Thank You for Your<br />
+      Interest in Naxatra Labs
+    </h1>
+    <p style="margin: 0 0 18px; font-size: 14px; line-height: 1.7; color: ${EMAIL_BODY_COLOR};">Hi ${firstName},</p>
+    <p style="margin: 0 0 18px; font-size: 14px; line-height: 1.7; color: ${EMAIL_BODY_COLOR};">Thank you for your interest in Naxatra Labs.</p>
+    <p style="margin: 0 0 18px; font-size: 14px; line-height: 1.7; color: ${EMAIL_BODY_COLOR};">We've received your request for the ${productInterestedIn} spec sheet. Our team will share the spec sheet with you shortly.</p>
+    <p style="margin: 0; font-size: 14px; line-height: 1.7; color: ${EMAIL_BODY_COLOR};">Best regards,<br />Naxatra Labs</p>
+  `);
+}
+
+function buildSpecSheetTeamEmailTemplate({ firstName, lastName, companyName, email, productInterestedIn }) {
+  return renderEmailLayout(`
+    <h1 style="margin: 0 0 28px; font-family: Arial, sans-serif; font-size: 24px; line-height: 1.28; font-weight: 400; color: ${EMAIL_HEADING_COLOR};">
+      New Spec Sheet Request<br />
+      Received
+    </h1>
+    <p style="margin: 0 0 18px; font-size: 14px; line-height: 1.7; color: ${EMAIL_BODY_COLOR};">Hi Team,</p>
+    <p style="margin: 0 0 10px; font-size: 14px; line-height: 1.7; color: ${EMAIL_BODY_COLOR};">A new spec sheet request has been received through the Naxatra Labs website.</p>
+    <p style="margin: 0 0 8px; font-size: 14px; line-height: 1.7; color: ${EMAIL_BODY_COLOR};">Requester Details:</p>
+    <ul style="margin: 0 0 18px 18px; padding: 0; font-size: 14px; line-height: 1.7; color: ${EMAIL_BODY_COLOR};">
+      <li>Name: ${firstName} ${lastName}</li>
+      <li>Email: ${email}</li>
+      <li>Product Interested In: ${productInterestedIn}</li>
+    </ul>
+    <p style="margin: 0 0 18px; font-size: 14px; line-height: 1.7; color: ${EMAIL_BODY_COLOR};">Please share the requested spec sheet with the user at the earliest.</p>
+    <p style="margin: 0; font-size: 14px; line-height: 1.7; color: ${EMAIL_BODY_COLOR};">Best,<br />Naxatra Labs</p>
+  `);
+}
+
 async function sendAutoReplyEmail({
   transporter,
   from,
@@ -298,9 +330,9 @@ app.post('/api/spec-sheet/request', async (req, res) => {
     });
   }
 
-  const { firstName, lastName, companyName, email } = req.body;
+  const { firstName, lastName, companyName, email, productInterestedIn } = req.body;
 
-  if (!firstName || !lastName || !companyName || !email) {
+  if (!firstName || !lastName || !companyName || !email || !productInterestedIn) {
     return res.status(400).json({ message: 'Please provide all required fields.' });
   }
 
@@ -315,35 +347,40 @@ app.post('/api/spec-sheet/request', async (req, res) => {
       replyTo: email,
       subject: 'New spec sheet request',
       text: [
-        'A new spec sheet request has been submitted.',
+        'New spec sheet request received.',
         '',
-        `First Name: ${firstName}`,
-        `Last Name: ${lastName}`,
-        `Company Name: ${companyName}`,
+        `Name: ${firstName} ${lastName}`,
         `Email: ${email}`,
+        `Company: ${companyName}`,
+        `Product Interested In: ${productInterestedIn}`,
       ].join('\n'),
-      html: `
-        <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #111;">
-          <h2 style="margin-bottom: 16px;">New spec sheet request received</h2>
-          <p><strong>First Name:</strong> ${firstName}</p>
-          <p><strong>Last Name:</strong> ${lastName}</p>
-          <p><strong>Company Name:</strong> ${companyName}</p>
-          <p><strong>Email:</strong> ${email}</p>
-        </div>
-      `,
+      html: buildSpecSheetTeamEmailTemplate({
+        firstName,
+        lastName,
+        companyName,
+        email,
+        productInterestedIn,
+      }),
     });
 
-    await sendAutoReplyEmail({
-      transporter,
+    await transporter.sendMail({
       from: sender,
       to: email,
-      subject: 'Thanks for requesting a Naxatra spec sheet',
-      recipientName: `${firstName} ${lastName}`.trim(),
-      messageLines: [
-        'Thank you for requesting a spec sheet from Naxatra.',
-        `We have received your request for ${companyName}.`,
-        'Our team will connect with you shortly with the relevant details.',
-      ],
+      subject: 'Thank you for your interest in Naxatra Labs',
+      html: buildSpecSheetUserEmailTemplate({
+        firstName,
+        productInterestedIn,
+      }),
+      text: [
+        `Hi ${firstName},`,
+        '',
+        'Thank you for your interest in Naxatra Labs.',
+        '',
+        `We have received your request for the ${productInterestedIn} spec sheet. Our team will share the spec sheet with you shortly.`,
+        '',
+        'Best regards,',
+        'Naxatra Labs',
+      ].join('\n'),
     });
 
     return res.status(200).json({ message: 'Spec sheet request submitted successfully.' });
