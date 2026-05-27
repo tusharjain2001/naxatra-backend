@@ -13,7 +13,7 @@ const upload = multer({
   limits: { fileSize: 10 * 1024 * 1024 },
 });
 
-const careersRequiredEnvVars = ['SMTP_HOST', 'SMTP_PORT', 'SMTP_USER', 'SMTP_PASS', 'CAREERS_RECEIVER_EMAIL'];
+const careersRequiredEnvVars = ['CAREERS_SMTP_HOST', 'CAREERS_SMTP_PORT', 'CAREERS_SMTP_USER', 'CAREERS_SMTP_PASS', 'CAREERS_RECEIVER_EMAIL'];
 const brochureRequiredEnvVars = ['BROCHURE_SMTP_USER', 'BROCHURE_SMTP_PASS', 'BROCHURE_RECEIVER_EMAIL'];
 const specSheetRequiredEnvVars = ['SPEC_SHEET_SMTP_USER', 'SPEC_SHEET_SMTP_PASS', 'SPEC_SHEET_RECEIVER_EMAIL'];
 const contactRequiredEnvVars = [
@@ -50,11 +50,11 @@ function createTransporter(config) {
 
 function getCareersMailConfig() {
   return {
-    host: process.env.SMTP_HOST,
-    port: process.env.SMTP_PORT || 465,
-    secure: process.env.SMTP_SECURE || 'true',
-    user: process.env.SMTP_USER,
-    pass: process.env.SMTP_PASS,
+    host: process.env.CAREERS_SMTP_HOST,
+    port: process.env.CAREERS_SMTP_PORT || 465,
+    secure: process.env.CAREERS_SMTP_SECURE || 'true',
+    user: process.env.CAREERS_SMTP_USER,
+    pass: process.env.CAREERS_SMTP_PASS,
     receiver: process.env.CAREERS_RECEIVER_EMAIL,
   };
 }
@@ -176,6 +176,42 @@ function buildSpecSheetTeamEmailTemplate({ firstName, lastName, companyName, ema
   `);
 }
 
+function buildCareersUserEmailTemplate({ fullName }) {
+  return renderEmailLayout(`
+    <h1 style="margin: 0 0 28px; font-family: Arial, sans-serif; font-size: 24px; line-height: 1.28; font-weight: 400; color: ${EMAIL_HEADING_COLOR};">
+      Thank you for applying to<br />
+      Naxatra Labs.
+    </h1>
+    <p style="margin: 0 0 18px; font-size: 14px; line-height: 1.7; color: ${EMAIL_BODY_COLOR};">Hi ${fullName},</p>
+    <p style="margin: 0 0 18px; font-size: 14px; line-height: 1.7; color: ${EMAIL_BODY_COLOR};">Thank you for applying to Naxatra Labs.</p>
+    <p style="margin: 0 0 18px; font-size: 14px; line-height: 1.7; color: ${EMAIL_BODY_COLOR};">We've received your application and our team is currently reviewing it. If your profile matches our requirements, we'll reach out to you regarding the next steps in the hiring process.</p>
+    <p style="margin: 0 0 18px; font-size: 14px; line-height: 1.7; color: ${EMAIL_BODY_COLOR};">We appreciate your interest in joining Naxatra Labs and the time you took to apply.</p>
+    <p style="margin: 0; font-size: 14px; line-height: 1.7; color: ${EMAIL_BODY_COLOR};">Best regards,<br />Naxatra Labs</p>
+  `);
+}
+
+function buildCareersTeamEmailTemplate({ fullName, email, phone, role, linkedin }) {
+  return renderEmailLayout(`
+    <h1 style="margin: 0 0 28px; font-family: Arial, sans-serif; font-size: 24px; line-height: 1.28; font-weight: 400; color: ${EMAIL_HEADING_COLOR};">
+      New Job Application<br />
+      Received (Role: ${role})
+    </h1>
+    <p style="margin: 0 0 18px; font-size: 14px; line-height: 1.7; color: ${EMAIL_BODY_COLOR};">Hi Team,</p>
+    <p style="margin: 0 0 10px; font-size: 14px; line-height: 1.7; color: ${EMAIL_BODY_COLOR};">A new application has been received for the ${role} position at Naxatra Labs.</p>
+    <p style="margin: 0 0 8px; font-size: 14px; line-height: 1.7; color: ${EMAIL_BODY_COLOR};">Candidate Details:</p>
+    <ul style="margin: 0 0 18px 18px; padding: 0; font-size: 14px; line-height: 1.7; color: ${EMAIL_BODY_COLOR};">
+      <li>Name: ${fullName}</li>
+      <li>Email: ${email}</li>
+      <li>Phone: ${phone}</li>
+      <li>Role: ${role}</li>
+      <li>LinkedIn: <a href="${linkedin}" style="color: ${EMAIL_HEADING_COLOR}; text-decoration: none;">${linkedin}</a></li>
+      <li>Application: Resume attached with this email</li>
+    </ul>
+    <p style="margin: 0 0 18px; font-size: 14px; line-height: 1.7; color: ${EMAIL_BODY_COLOR};">Please review the application and proceed with the next steps accordingly.</p>
+    <p style="margin: 0; font-size: 14px; line-height: 1.7; color: ${EMAIL_BODY_COLOR};">Best,<br />Naxatra Labs</p>
+  `);
+}
+
 async function sendAutoReplyEmail({
   transporter,
   from,
@@ -275,24 +311,22 @@ app.post('/api/careers/apply', upload.single('resume'), async (req, res) => {
       replyTo: email,
       subject: `New career application: ${role}`,
       text: [
-        'A new careers form has been submitted.',
+        'New job application received.',
         '',
-        `Full Name: ${fullName}`,
+        `Name: ${fullName}`,
         `Email: ${email}`,
-        `Contact Number: ${phone}`,
+        `Phone: ${phone}`,
         `Role: ${role}`,
         `LinkedIn: ${linkedin}`,
+        'Application: Resume attached with this email',
       ].join('\n'),
-      html: `
-        <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #111;">
-          <h2 style="margin-bottom: 16px;">New career application received</h2>
-          <p><strong>Full Name:</strong> ${fullName}</p>
-          <p><strong>Email:</strong> ${email}</p>
-          <p><strong>Contact Number:</strong> ${phone}</p>
-          <p><strong>Applying For:</strong> ${role}</p>
-          <p><strong>LinkedIn:</strong> <a href="${linkedin}">${linkedin}</a></p>
-        </div>
-      `,
+      html: buildCareersTeamEmailTemplate({
+        fullName,
+        email,
+        phone,
+        role,
+        linkedin,
+      }),
       attachments: [
         {
           filename: req.file.originalname,
@@ -302,17 +336,23 @@ app.post('/api/careers/apply', upload.single('resume'), async (req, res) => {
       ],
     });
 
-    await sendAutoReplyEmail({
-      transporter,
+    await transporter.sendMail({
       from: sender,
       to: email,
-      subject: 'Thanks for applying to Naxatra',
-      recipientName: fullName,
-      messageLines: [
-        'Thank you for submitting your application to Naxatra.',
-        `We have received your application for ${role}.`,
-        'Our team will review your details and get back to you if your profile matches the role.',
-      ],
+      subject: 'Thank you for applying to Naxatra Labs',
+      html: buildCareersUserEmailTemplate({ fullName }),
+      text: [
+        `Hi ${fullName},`,
+        '',
+        'Thank you for applying to Naxatra Labs.',
+        '',
+        "We've received your application and our team is currently reviewing it. If your profile matches our requirements, we'll reach out to you regarding the next steps in the hiring process.",
+        '',
+        'We appreciate your interest in joining Naxatra Labs and the time you took to apply.',
+        '',
+        'Best regards,',
+        'Naxatra Labs',
+      ].join('\n'),
     });
 
     return res.status(200).json({ message: 'Application submitted successfully.' });
